@@ -1,5 +1,11 @@
+import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+import '../widgets/user_image_picker.dart';
 
 final _firebase = FirebaseAuth.instance;
 
@@ -16,16 +22,22 @@ class _AuthScreenState extends State<AuthScreen> {
   var _isLogIn = true;
   var _enteredEmail = '';
   var _enteredPassword = '';
+  File? _selectedImage;
+  var _isAuthenticating = false;
+  var _enteredUsername = '';
 
   void _submit() async {
     final isValid = _form.currentState!.validate();
 
-    if (!isValid) {
+    if (!isValid || !_isLogIn && _selectedImage == null) {
       return;
     }
 
     _form.currentState!.save();
     try {
+      setState(() {
+        _isAuthenticating = false;
+      });
       if (_isLogIn) {
         final userCredential = await _firebase.signInWithEmailAndPassword(
           email: _enteredEmail,
@@ -36,6 +48,23 @@ class _AuthScreenState extends State<AuthScreen> {
           email: _enteredEmail,
           password: _enteredPassword,
         );
+
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('user_images')
+            .child('${userCredentials.user!.uid}.jpg');
+
+        await storageRef.putFile(_selectedImage!);
+        final imageUrl = await storageRef.getDownloadURL();
+
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userCredentials.user!.uid)
+            .set({
+          'username': _enteredUsername,
+          'email': _enteredEmail,
+          'image_url': imageUrl,
+        });
       }
     } on FirebaseAuthException catch (error) {
       if (error.code == 'email-already-in-use') {
@@ -47,6 +76,9 @@ class _AuthScreenState extends State<AuthScreen> {
           content: Text(error.message ?? 'Authentication failed'),
         ),
       );
+      setState(() {
+        _isAuthenticating = false;
+      });
     }
   }
 
@@ -79,6 +111,12 @@ class _AuthScreenState extends State<AuthScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (!_isLogIn)
+                            UserImagePicker(
+                              onPickImage: (pickedImage) {
+                                _selectedImage = pickedImage;
+                              },
+                            ),
                           TextFormField(
                             decoration: const InputDecoration(
                               labelText: 'Email',
@@ -101,6 +139,27 @@ class _AuthScreenState extends State<AuthScreen> {
                           const SizedBox(
                             height: 10,
                           ),
+                          if (!_isLogIn)
+                            TextFormField(
+                              decoration: const InputDecoration(
+                                labelText: 'Username',
+                              ),
+                              enableSuggestions: false,
+                              validator: (value) {
+                                if (value == null ||
+                                    value.isEmpty ||
+                                    value.trim().length < 4) {
+                                  return 'Please enter a valid username';
+                                }
+                                return null;
+                              },
+                              onSaved: (value) {
+                                _enteredUsername = value!;
+                              },
+                            ),
+                          const SizedBox(
+                            height: 10,
+                          ),
                           TextFormField(
                             decoration: const InputDecoration(
                               labelText: 'Password',
@@ -119,25 +178,29 @@ class _AuthScreenState extends State<AuthScreen> {
                           const SizedBox(
                             height: 10,
                           ),
-                          ElevatedButton(
-                            onPressed: _submit,
-                            style: ElevatedButton.styleFrom(
-                              primary: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer,
+                          if (_isAuthenticating)
+                            const CircularProgressIndicator(),
+                          if (!_isAuthenticating)
+                            ElevatedButton(
+                              onPressed: _submit,
+                              style: ElevatedButton.styleFrom(
+                                primary: Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer,
+                              ),
+                              child: Text(_isLogIn ? 'Login' : 'Sign up'),
                             ),
-                            child: Text(_isLogIn ? 'Login' : 'Sign up'),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              setState(() {
-                                _isLogIn = !_isLogIn;
-                              });
-                            },
-                            child: Text(_isLogIn
-                                ? 'Create an account'
-                                : 'I already have an account'),
-                          ),
+                          if (!_isAuthenticating)
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _isLogIn = !_isLogIn;
+                                });
+                              },
+                              child: Text(_isLogIn
+                                  ? 'Create an account'
+                                  : 'I already have an account'),
+                            ),
                         ],
                       ),
                     ),
