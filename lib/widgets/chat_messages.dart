@@ -12,6 +12,7 @@ class ChatMessages extends StatelessWidget {
     final authenticatedUser = FirebaseAuth.instance.currentUser!;
 
     return StreamBuilder(
+      //setea un listener para que cada cambio en firebase se notifique
       stream: FirebaseFirestore.instance
           .collection('chat')
           .orderBy(
@@ -19,6 +20,8 @@ class ChatMessages extends StatelessWidget {
             descending: true,
           )
           .snapshots(),
+      //actualiza la UI cuando hay un cambio en firebase
+      //snapshots da acceso a la los datos cargados en firebase
       builder: (ctx,
           AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> chatSnapshots) {
         if (chatSnapshots.connectionState == ConnectionState.waiting) {
